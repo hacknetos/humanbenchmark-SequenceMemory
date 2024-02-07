@@ -9,13 +9,19 @@ POINT P_TOPLEFT;
 POINT P_BOTRIGHT;
 
 std::vector<std::pair<double,double>> V_squers;
+std::vector<std::pair<double, double>> V_clickOrder;
 
+bool b_canGO = false;
+bool b_No_clickting = true;
 //Backgrundcolor = (43, 135, 209)
 const COLORREF C_backgrundColor = 13731627; //Normaler Hinter grund Kann ignoriert werden
 const COLORREF C_normalSquare = 12677925; // Normaler Squerare
 const COLORREF C_marktSquare = 16777215; // Markierter Squerare 
 
 bool search = true, building = true;
+
+
+
 
 void WaitSquerRegiester() {
 	short anzahl_runns = 0;
@@ -140,12 +146,58 @@ void Squermessung(int& height, int& width,int& distance,int foundPosX, int found
 	distance = counter - 1;
 	ReleaseDC(NULL, display);
 }
+
+void CheackMySquer(int x, int y) {
+	COLORREF lastColor = C_normalSquare;
+	HDC display = GetDC(NULL);
+	while (program_running)
+	{
+		COLORREF color = GetPixel(display, x, y);
+		if (color != lastColor && b_No_clickting)
+		{
+			lastColor = color;
+
+			if (color == C_marktSquare)
+			{
+				lastColor == C_marktSquare;
+				V_clickOrder.push_back(std::pair<double, double>(x, y));
+				b_canGO = false;
+				std::cout << "a Markt Square\n";
+
+			}
+			else if(color == C_normalSquare && color != lastColor)
+			{
+				std::cout << "a Normal Square\n";
+				lastColor = C_normalSquare;
+				b_canGO = false;
+				
+			}
+			else {
+				lastColor = color;
+				b_canGO = false;
+			}
+			
+		}
+		Sleep(10);
+	}
+	ReleaseDC(NULL, display);
+};
+
+
+
 void CheackFild() {
+	
+	std::vector<std::thread> V_threads;
+
+
 	int firstfundX, FirstfundY = 0;
 	
 	HDC display = GetDC(NULL);
 	
 	int height = 0, width = 0, distance = 0;
+
+	
+
 	while (program_running)
 	{
 		while (building)
@@ -155,14 +207,6 @@ void CheackFild() {
 			if (P_BOTRIGHT.y != NULL && program_running)
 			{
 				int counter = 0;
-				
-				
-				/*
-				std::cout << "Rechung: " << P_TOPLEFT.x << " + " << "((" << P_TOPLEFT.x * -1 << ") - (" << P_BOTRIGHT.x * -1 << ") / " << 4 << ")\n";
-				std::cout << "Rechen ERG ist = " << P_TOPLEFT.x + (P_TOPLEFT.x * -1 - P_BOTRIGHT.x * -1) / 4 << "\n";
-				*/
-				
-				//Step eins scanne biss ich einen passenden Pixel Gefunden Habe von Links nach Rechts 
 				while (search)
 				{
 					for (int x = P_TOPLEFT.x; x < P_TOPLEFT.x+(P_TOPLEFT.x*-1 - P_BOTRIGHT.x*-1)/4; x++)
@@ -195,7 +239,6 @@ void CheackFild() {
 
 					
 				}
-				
 				int anzahl_squers_on_x = (P_TOPLEFT.x*-1 - P_BOTRIGHT.x*-1) / width;
 				int anzahl_squers_on_y = (P_BOTRIGHT.y - P_TOPLEFT.y) / height;
 				std::cout << "die anzahl an squers ist: " << anzahl_squers_on_x * anzahl_squers_on_y << "\n";
@@ -205,7 +248,7 @@ void CheackFild() {
 					break;
 				}
 
-				//V_squers.push_back(std::pair<double, double>(firstfundX + (width / 2), FirstfundY + (height / 2)));
+				
 				int last_cord_x = firstfundX + (width / 2);
 				int last_cord_y = FirstfundY + (height / 2);
 				for (int y = 0; y < anzahl_squers_on_y; y++)
@@ -237,18 +280,49 @@ void CheackFild() {
 				{
 					std::cout << "x: " << V_squers.at(i).first << " y: " << V_squers.at(i).second << "\n";
 				}
+				
 				building = false;
+				//Starte Die Überwachung
+				for (int i = 0; i < V_squers.size(); i++)
+				{
+					V_threads.push_back(std::move(std::thread(CheackMySquer, V_squers.at(i).first, V_squers.at(i).second)));
+				}
 				Sleep(2000);
 			}
 		}
 	}
 	ReleaseDC(NULL, display);
+
+	for (int i = 0; i < V_threads.size(); i++)
+	{
+		V_threads.at(i).join();
+	}
 }
 
-void CheackSquers() {
-	while (true)
+void StartClicks() {
+	while (program_running)
 	{
-
+		Sleep(500);
+		if (b_canGO && V_clickOrder.size() > 0) {
+			b_No_clickting = false;
+			std::cout << "Start Clicking\n";
+			for (int i = 0; i < V_clickOrder.size(); i++)
+			{
+				
+				SetCursorPos(V_clickOrder.at(i).first, V_clickOrder.at(i).second);
+				Sleep(50);
+				mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+			}
+			V_clickOrder.clear();
+			b_No_clickting = true;
+			std::cout << "\nFinished Clicking\n";
+		}
+		else
+		{
+			Sleep(500);
+			b_canGO = true;
+		}
 	}
 }
 
@@ -258,12 +332,14 @@ int main()
 	std::thread t_posSaver(WaitSquerRegiester);
 	std::thread t_quitWaiter(WaitForQuitClick);
 	std::thread t_FieldBuilder(CheackFild);
+	std::thread t_startClick(StartClicks);
 	while (program_running)
 	{
-
+		
 	}
 	t_posSaver.join();
 	t_quitWaiter.join();
 	t_FieldBuilder.join();
+	t_startClick.join();
 }
 
